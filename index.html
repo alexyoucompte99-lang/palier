@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Palier</title>
+<meta name="description" content="Palier · pilotage perso & pro d'Alex : clients, tâches, sport, nutrition, sommeil, bilans.">
+<meta name="theme-color" content="#1f7a5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Palier">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="icons/icon-192.png" alt="" width="28" height="28"><span>Palier</span></div>
+  <div class="top-right">
+    <span id="streak" class="chip chip-amber" title="Semaines d'affilée avec tes séances">🔥 0</span>
+    <button id="btn-idea" class="icon-btn" title="Boîte à idées">💡</button>
+    <button id="btn-settings" class="icon-btn" title="Réglages">⚙︎</button>
+    <span id="sync" class="sync" title="Synchronisation"></span>
+  </div>
+</header>
+
+<main id="view"></main>
+
+<nav class="tabs">
+  <button data-tab="today"><span class="ico">☀️</span><span>Aujourd'hui</span></button>
+  <button data-tab="clients"><span class="ico">🧭</span><span>Clients</span></button>
+  <button data-tab="sport"><span class="ico">🏋️</span><span>Sport</span></button>
+  <button data-tab="suivi"><span class="ico">📈</span><span>Suivi</span></button>
+  <button data-tab="bilan"><span class="ico">🌙</span><span>Bilan</span></button>
+</nav>
+
+<div id="sheet-root"></div>
+<div id="toast"></div>
+
+<script src="core.js?v=1"></script>
+<script src="charts.js?v=1"></script>
+<script src="today.js?v=1"></script>
+<script src="clients.js?v=1"></script>
+<script src="sport.js?v=1"></script>
+<script src="suivi.js?v=1"></script>
+<script src="bilan.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
