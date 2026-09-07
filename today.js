@@ -196,16 +196,26 @@ function morningSheet(date) {
     </div>
     <label class="f">Comment je me sens au réveil</label>${scaleHtml('feel', 10, m.feel)}
     <label class="f">Temps d'écran d'hier (Réglages → Temps d'écran)</label><div class="row"><input class="in num grow" type="number" inputmode="numeric" data-scrh value="${m.screen_min != null ? Math.floor(m.screen_min / 60) : ''}" placeholder="h"><span class="muted">h</span><input class="in num grow" type="number" inputmode="numeric" data-scrm value="${m.screen_min != null ? m.screen_min % 60 : ''}" placeholder="min"><span class="muted">min</span></div>
-    <label class="f">Screen Sleep Cycle (facultatif)</label><input type="file" accept="image/*" data-photo class="in" style="font-size:14px">${m.photo ? `<div class="small mt"><a href="${esc(m.photo)}" target="_blank">Voir le screen enregistré</a></div>` : ''}
+    <label class="f">Screen Sleep Cycle → lecture automatique des chiffres</label><input type="file" accept="image/*" data-photo class="in" style="font-size:14px"><div class="small muted" data-ocr-status>${m.photo ? `<a href="${esc(m.photo)}" target="_blank">Screen enregistré</a>` : 'Choisis le screen : sommeil et qualité se remplissent seuls.'}</div>
     <label class="f">Note</label><input class="in" data-note value="${esc(m.note || '')}" placeholder="réveil nocturne, rêve, intention du jour…">
     <div class="sheet-actions"><button class="btn p wide" data-save>Enregistrer</button></div>`);
   wireSegs(sh);
+  sh.querySelector('[data-photo]').addEventListener('change', async () => {
+    const f = sh.querySelector('[data-photo]').files[0]; if (!f) return;
+    const st = sh.querySelector('[data-ocr-status]'); st.textContent = 'Lecture du screen…';
+    try {
+      const data = await shrinkImage(f); const r = await post({ what: 'photo', name: 'sleep-' + d + '.jpg', mime: 'image/jpeg', data, ocr: true });
+      if (!r.ok) throw new Error(r.error || 'photo');
+      m.photo = r.url; m.sleep_src = 'sleepcycle-ocr';
+      if (r.sleep_h != null) sh.querySelector('[data-sh]').value = r.sleep_h;
+      if (r.sleep_q != null) sh.querySelector('[data-sq]').value = r.sleep_q;
+      st.textContent = (r.sleep_h != null || r.sleep_q != null) ? 'Lu : ' + (r.sleep_h != null ? hm(r.sleep_h * 60) : '?') + ' · ' + (r.sleep_q != null ? r.sleep_q + ' %' : '?') + ' (corrige si besoin)' : 'Screen enregistré mais chiffres non reconnus : saisis-les à la main.';
+    } catch (e) { st.textContent = 'Screen non envoyé (' + (e.message || e) + ')'; }
+  });
   sh.querySelector('[data-save]').addEventListener('click', async () => {
     m.sleep_h = nval(sh, '[data-sh]'); m.sleep_q = nval(sh, '[data-sq]'); m.weight = nval(sh, '[data-w]'); m.feel = segVal(sh, 'feel');
     const sh_ = nval(sh, '[data-scrh]'), sm = nval(sh, '[data-scrm]'); m.screen_min = (sh_ != null || sm != null) ? (sh_ || 0) * 60 + (sm || 0) : null; m.note = val(sh, '[data-note]');
     put(m); sh.close(); render(); toast('Check-in enregistré ☀️');
-    const f = sh.querySelector('[data-photo]').files[0];
-    if (f) { try { toast('Envoi du screen…'); const data = await shrinkImage(f); const r = await post({ what: 'photo', name: 'sleep-' + d + '.jpg', mime: 'image/jpeg', data }); if (r.ok) { m.photo = r.url; put(m); toast('Screen enregistré'); } else toast('Screen non envoyé'); } catch (e) { toast('Screen non envoyé'); } }
   });
 }
 function shrinkImage(file) {

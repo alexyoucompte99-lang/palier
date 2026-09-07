@@ -1,42 +1,29 @@
-# Raccourci iOS « Palier Santé » (sommeil Sleep Cycle + méditation Petit Bambou)
+# Sommeil, méditation et temps d'écran : comment ça remonte dans Palier
 
-Ni Sleep Cycle ni Petit Bambou n'ont d'API. Les deux savent écrire dans Apple Santé, et un Raccourci iOS peut lire Santé et l'envoyer à Palier chaque matin. 5 minutes, une seule fois, sur l'iPhone.
+## Sommeil : les vrais chiffres Sleep Cycle, par screen (recommandé)
+Sleep Cycle n'a pas d'API et ses chiffres ne sont pas ceux d'Apple Santé. Palier lit donc directement le screen de Sleep Cycle (OCR côté Google Drive) : qualité en %, temps endormi, temps au lit.
 
-## 0. Activer les exports vers Santé
-- **Sleep Cycle** → Profil → Réglages → *Apple Health* → activer « Analyse du sommeil » (écriture).
-- **Petit Bambou** → Profil → Réglages → *Apple Santé* → activer « Minutes de pleine conscience ».
-- Santé → Profil → Apps → vérifier que les deux ont l'autorisation d'écrire.
+**Option A · dans Palier (2 taps)** : tuile ☀️ Matin → « Screen Sleep Cycle » → choisir le screen du matin → les champs Sommeil et Qualité se remplissent seuls, tu vérifies et tu enregistres.
 
-## 1. Créer le Raccourci
-Ouvrir **Raccourcis** → **+** → nommer « Palier Santé ». Ajouter les actions dans cet ordre (chercher chaque action par son nom) :
+**Option B · depuis la feuille de partage (Raccourci « Palier Sommeil », 3 actions)** : tu fais le screen dans Sleep Cycle, tu le partages vers le Raccourci, c'est envoyé et rangé dans le check-in du jour.
+1. Raccourcis → + → nom « Palier Sommeil » → Détails → activer **Afficher dans la feuille de partage** (types : Images).
+2. Action **Encoder en Base64** sur « Entrée du raccourci ».
+3. Action **Obtenir le contenu de l'URL** :
+   - URL `https://script.google.com/macros/s/AKfycbzbiutY5E4Y3qoTtCPx08txUJ0zuGWSfGhn5r_jNYZ_qYPrcIIKOL8UtBGjwntZ0pB2NQ/exec`
+   - Méthode **POST**, corps **JSON**, champs texte : `key` = `palier-7f3c9a2e5b1d4c8e` · `what` = `sleep_shot` · `mime` = `image/jpeg` · `data` = (variable *Texte encodé en Base64*)
+4. Action **Afficher une notification** avec le résultat (facultatif).
+Usage : screen de Sleep Cycle → Photos → Partager → « Palier Sommeil ». Ou depuis le bouton Partager de Sleep Cycle si l'image est proposée.
 
-1. **Date** → « Date actuelle ».
-2. **Formater la date** : format *Personnalisé*, chaîne `yyyy-MM-dd`. Renommer le résultat `jour` (appui long sur la variable → Renommer).
-3. **Trouver des échantillons de santé** :
-   - Type : **Analyse du sommeil**
-   - Filtres : *Date de début* est **dans les dernières 18 heures** ; *Valeur* est **Endormi** (ou « Asleep »)
-   - Trier par : Date de début, Croissant, sans limite.
-4. **Calculer des statistiques** sur les échantillons trouvés : **Somme** → résultat = durée totale (en minutes ou heures selon l'unité affichée). Renommer `sommeil`.
-   - Si le résultat est en minutes : ajouter **Calculer** `sommeil ÷ 60`.
-5. **Trouver des échantillons de santé** : Type **Minutes de pleine conscience**, filtre *Date de début* est **aujourd'hui** (ou dernières 18 h).
-6. **Calculer des statistiques** : Somme → renommer `meditation` (0 si rien).
-7. **Obtenir le contenu de l'URL** :
-   - URL : `https://script.google.com/macros/s/AKfycbzbiutY5E4Y3qoTtCPx08txUJ0zuGWSfGhn5r_jNYZ_qYPrcIIKOL8UtBGjwntZ0pB2NQ/exec`
-   - Méthode : **POST** · Corps de la requête : **JSON**
-   - Champs (texte) : `key` = `palier-7f3c9a2e5b1d4c8e` · `what` = `health` · `date` = variable `jour` · `sleep_h` = variable `sommeil` · `mindful_min` = variable `meditation`
-8. (Facultatif) **Afficher une notification** avec le résultat pour vérifier la première fois.
+Backup : saisie à la main dans la tuile Matin (2 chiffres).
 
-Lancer une fois à la main : Palier → tuile Matin doit afficher le sommeil en bandeau « Apple Santé ».
+## Méditation (Petit Bambou)
+Petit Bambou n'a pas d'API. Deux choix :
+- bouton « Médit. » sur l'accueil (1 tap + durée), ou
+- Petit Bambou → Réglages → Apple Santé activé, puis un Raccourci « Palier Santé » (Trouver des échantillons de santé : Minutes de pleine conscience, aujourd'hui → Calculer des statistiques : Somme → Obtenir le contenu de l'URL POST JSON `key`, `what` = `health`, `date` = date du jour formatée `yyyy-MM-dd`, `mindful_min` = somme), automatisé à 21h.
 
-## 2. Automatiser
-Raccourcis → onglet **Automatisation** → **+** → **Heure de la journée** : 7h30, tous les jours → « Exécuter immédiatement » (désactiver « Demander avant d'exécuter ») → choisir « Palier Santé ».
-
-## Si les chiffres Santé ≠ Sleep Cycle
-C'est que Sleep Cycle n'écrit pas (étape 0) et que Santé prend le sommeil estimé par l'iPhone. Dans ce cas, le check-in du matin permet de corriger la valeur à la main et de joindre le screen Sleep Cycle.
-
-## Temps d'écran (côté Mac, automatique)
-Apple n'expose pas le Temps d'écran aux apps ni aux Raccourcis. Palier passe par le Mac :
-1. iPhone : Réglages → Temps d'écran → **Partager entre les appareils** : activé. Idem sur le Mac (Réglages Système → Temps d'écran).
-2. Mac : Réglages Système → Confidentialité et sécurité → **Accès complet au disque** → **+** → ajouter `~/Applications/Palier Écran.app` (Cmd+Maj+G puis coller `/Users/alex/Applications`).
-3. Test : double-clic sur « Palier Écran » dans ~/Applications, puis vérifier `~/Library/Logs/palier-ecran.log`.
-Ensuite, chaque jour à 7h50 (Mac allumé ou en veille avec Power Nap), le total d'hier arrive dans le check-in du matin.
+## Temps d'écran de l'iPhone (automatique via le Mac)
+Apple n'expose pas le Temps d'écran aux apps ni aux Raccourcis. Palier passe par le Mac, qui reçoit les données de l'iPhone quand le partage est activé. Seul le total iPhone est envoyé (le Mac n'est pas compté).
+1. iPhone : Réglages → Temps d'écran → **Partager entre les appareils** activé. Mac : Réglages Système → Temps d'écran → idem.
+2. Mac : Réglages Système → Confidentialité et sécurité → **Accès complet au disque** → **+** → Cmd+Maj+G → `/Users/alex/Applications` → « Palier Écran ».
+3. Test : double-clic sur « Palier Écran » dans ~/Applications, puis lire `~/Library/Logs/palier-ecran.log`.
+Ensuite tous les jours à 7h50, le total d'hier arrive dans le check-in du matin (champ « écran hier », modifiable).

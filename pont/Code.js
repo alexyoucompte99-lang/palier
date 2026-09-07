@@ -10,7 +10,8 @@
 //   setup        { ntfy_topic?, app_url? }   crée le Sheet, pose les secrets, installe les rappels
 //   upsert       { items:[…] }               écrit/écrase par id (dernier `updated` gagne)
 //   all          { since }                   comme doGet what=all
-//   photo        { name, data(base64), mime } -> { url } (dossier Drive « Palier »)
+//   photo        { name, data(base64), mime, ocr? } -> { url, sleep_h?, sleep_q?, ocr_text? } (dossier Drive « Palier »)
+//   sleep_shot   { data(base64), mime, date? }      screen Sleep Cycle -> OCR -> morning-<date> (Raccourci partage)
 //   health       { date, sleep_h, sleep_start, sleep_end, sleep_q, mindful_min, weight, screen_min }  (Raccourci iOS / script Mac)
 //   ntfy_test    {}
 //   strava_setup { client_id, client_secret }
@@ -43,6 +44,7 @@ function doPost(e) {
     if (p.what === 'all') return out(all_(Number(p.since || 0)));
     if (p.what === 'photo') return out(photo_(p));
     if (p.what === 'health') return out(health_(p));
+    if (p.what === 'sleep_shot') return out(sleepShot_(p));
     if (p.what === 'ntfy_test') return out({ ok: ntfy_('Palier : notification de test 👌', 'Test') });
     if (p.what === 'strava_setup') { P.setProperty('STRAVA_ID', String(p.client_id)); P.setProperty('STRAVA_SECRET', String(p.client_secret)); return out({ ok: true, url: stravaAuthUrl_() }); }
     if (p.what === 'strava_sync') return out(stravaSync_());
@@ -162,7 +164,52 @@ function photo_(p) {
   const blob = Utilities.newBlob(Utilities.base64Decode(p.data), p.mime || 'image/jpeg', p.name || ('photo-' + Date.now() + '.jpg'));
   const f = folder.createFile(blob);
   f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return { ok: true, url: 'https://drive.google.com/uc?export=view&id=' + f.getId(), id: f.getId() };
+  const res = { ok: true, url: 'https://drive.google.com/uc?export=view&id=' + f.getId(), id: f.getId() };
+  if (p.ocr) Object.assign(res, ocrSleep_(blob));
+  return res;
+}
+
+// OCR d'un screen Sleep Cycle via Drive (conversion image -> Google Doc), puis extraction durée + qualité.
+function ocrSleep_(blob) {
+  let text = '';
+  try {
+    let doc;
+    try { doc = Drive.Files.insert({ title: 'ocr-tmp-' + Date.now() }, blob, { convert: true, ocr: true, ocrLanguage: 'fr' }); }
+    catch (e1) { const img = DriveApp.createFile(blob); doc = Drive.Files.copy({ title: 'ocr-tmp-' + Date.now(), mimeType: 'application/vnd.google-apps.document' }, img.getId(), { ocr: true, ocrLanguage: 'fr' }); img.setTrashed(true); }
+    text = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '/export?mimeType=text/plain', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true }).getContentText();
+    Drive.Files.remove(doc.id);
+  } catch (e) { return { ocr_error: String(e && e.message || e) }; }
+  const t = text.replace(/\s+/g, ' ');
+  const out = { ocr_text: t.slice(0, 600) };
+  // qualité : « Qualité du sommeil 82 % » (ou « 82% »)
+  let m = t.match(/qualit[ée][^0-9]{0,30}(\d{1,3})\s*%/i) || t.match(/(\d{1,3})\s*%/);
+  if (m) out.sleep_q = Number(m[1]);
+  // durée : « 7 h 24 min », « 7h24 », « 7:24 », « 7 h 24 » ; on prend la première après « sommeil »/« dormi »/« au lit », sinon la première.
+  const re = /(\d{1,2})\s*(?:h|:)\s*(\d{2})\s*(?:min)?/g;
+  const cands = []; let r; while ((r = re.exec(t))) cands.push({ h: Number(r[1]), m: Number(r[2]), i: r.index });
+  const valid = cands.filter(c => c.h >= 3 && c.h <= 14 && c.m < 60);
+  if (valid.length) {
+    // priorité au temps réellement dormi (« Endormi » / « Asleep »), sinon « Temps au lit », sinon la première durée
+    const a1 = t.search(/(endormi|asleep|dormi)/i), a2 = t.search(/(au lit|in bed|sommeil|time)/i);
+    const pick = (a1 >= 0 && valid.find(c => c.i > a1)) || (a2 >= 0 && valid.find(c => c.i > a2)) || valid[0];
+    out.sleep_h = Math.round((pick.h + pick.m / 60) * 100) / 100;
+    const bed = a2 >= 0 && valid.find(c => c.i > a2); if (bed && bed !== pick) out.bed_h = Math.round((bed.h + bed.m / 60) * 100) / 100;
+  }
+  return out;
+}
+
+// Raccourci partage : screen Sleep Cycle -> OCR -> check-in du matin.
+function sleepShot_(p) {
+  const r = photo_(Object.assign({ ocr: true, name: 'sleep-' + today_() + '.jpg' }, p));
+  const date = p.date || today_();
+  const id = 'morning-' + date;
+  const cur = getItem_(id) || { id, t: 'morning', d: date };
+  cur.photo = r.url;
+  if (r.sleep_h != null) cur.sleep_h = r.sleep_h;
+  if (r.sleep_q != null) cur.sleep_q = r.sleep_q;
+  cur.sleep_src = 'sleepcycle-ocr'; cur.u = Date.now();
+  upsert_([cur]);
+  return Object.assign({ saved: true, date }, r);
 }
 
 // ---------- Apple Santé (Raccourci iOS) ----------
