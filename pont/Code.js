@@ -11,7 +11,7 @@
 //   upsert       { items:[…] }               écrit/écrase par id (dernier `updated` gagne)
 //   all          { since }                   comme doGet what=all
 //   photo        { name, data(base64), mime } -> { url } (dossier Drive « Palier »)
-//   health       { date, sleep_h, sleep_start, sleep_end, sleep_q, mindful_min, weight }  (Raccourci iOS)
+//   health       { date, sleep_h, sleep_start, sleep_end, sleep_q, mindful_min, weight, screen_min }  (Raccourci iOS / script Mac)
 //   ntfy_test    {}
 //   strava_setup { client_id, client_secret }
 //   strava_sync  {}
@@ -175,6 +175,7 @@ function health_(p) {
   if (p.sleep_end) cur.sleep_end = p.sleep_end;
   if (p.sleep_q != null && p.sleep_q !== '') cur.sleep_q_auto = Number(p.sleep_q);
   if (p.weight != null && p.weight !== '') cur.weight = Number(p.weight);
+  if (p.screen_min != null && p.screen_min !== '') { cur.screen_min = Math.round(Number(p.screen_min)); cur.screen_auto = true; }
   cur.u = Date.now();
   const items = [cur];
   if (p.mindful_min != null && p.mindful_min !== '' && Number(p.mindful_min) > 0) {
