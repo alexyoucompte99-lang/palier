@@ -89,6 +89,8 @@ const CLIENT_SEED = [
   { id: 'client-tanguy', name: 'Tanguy', role: 'Associé 50/50', kind: 'client', horizon: 'court', color: 'var(--teal)', letter: 'Ta' },
   { id: 'client-eloi', name: 'Eloi', role: 'Client', kind: 'client', horizon: 'court', color: 'var(--olive)', letter: 'El' },
   { id: 'client-leo', name: 'Léo', role: 'Référencement dentistes', kind: 'client', horizon: 'court', color: '#5b8def', letter: 'Lé' },
+  { id: 'client-autre-business', name: 'Autre business', role: 'Projets et opportunités hors clients actuels', kind: 'biz', horizon: 'court', color: '#3aa17e', letter: 'AB' },
+  { id: 'client-modif-palier', name: 'Modif Palier', role: 'Améliorations de l\'appli Palier', kind: 'biz', horizon: 'court', color: '#6b7cff', letter: 'MP' },
   { id: 'client-relation-argent', name: 'Relation argent', role: 'Business passion · formation, acquisition, contenu, clients. Plus tard : livre, conférences, podcast', kind: 'biz', horizon: 'liberte', color: 'var(--amber)', letter: 'R€' },
   { id: 'client-cynthia', name: 'Cynthia', role: 'Assistante (presta)', kind: 'team', horizon: 'court', color: '#9c6b9e', letter: 'Cy' },
   { id: 'client-maximilien', name: 'Maximilien', role: 'Alternant (presta)', kind: 'team', horizon: 'court', color: '#4d8a8a', letter: 'Ma' },
@@ -107,6 +109,7 @@ function clients() { return all('client').sort((a, b) => (a.order || 0) - (b.ord
 function client(id) { return get(id) || CLIENT_SEED.find(c => c.id === id) || { name: '?', color: 'var(--soft)', letter: '?' }; }
 function seedIfEmpty() {
   if (!all('client').length) CLIENT_SEED.forEach((c, i) => put(Object.assign({ t: 'client', order: i, bottlenecks: [], plan: '', notes: '', mrr: null, status: 'actif' }, c), true));
+  else CLIENT_SEED.forEach((c, i) => { if (!DB.items[c.id]) put(Object.assign({ t: 'client', order: i, bottlenecks: [], plan: '', notes: '', mrr: null, status: 'actif' }, c), true); });
   if (!all('task').length && !localStorage.getItem('palier-seeded')) { TASK_SEED.forEach(t => put(Object.assign({ id: uid('task'), t: 'task', d: today(), today: null, done: false, src: 'seed' }, t), true)); }
   if (!all('plan').length) DEFAULT_PLANS.forEach(p => put(Object.assign({ t: 'plan' }, p), true));
   if (!all('goal').length && !localStorage.getItem('palier-seeded')) GOAL_SEED.forEach(g => put(Object.assign({ id: uid('goal'), t: 'goal', d: today(), status: 'actif' }, g), true));
