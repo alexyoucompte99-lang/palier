@@ -146,7 +146,7 @@ function leadCard(t) {
   const quand = d ? d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', 'h') : '?';
   const sent = t.prep && (t.prep_sent || '') === t.prep;
   return `<div class="card" style="margin-top:0;background:var(--amber-soft)">
-    <div class="row between"><div><div class="title" style="font-weight:700;font-size:17px">${esc(c.n || '?')}</div><div class="small muted">Call avec Anaïs · ${esc(quand)}${c.closer ? ' · closer ' + esc(c.closer) : ''}</div></div><span class="small muted">${esc(c.event || 'iClosed')}</span></div>
+    <div class="row between"><div><div class="title" style="font-weight:700;font-size:17px">${esc(c.n || '?')}</div><div class="small muted">Call avec Anaïs · ${esc(quand)}${c.closer && !/[.@]/.test(c.closer) ? ' · closer ' + esc(c.closer) : ''}</div></div><span class="small muted">${esc(c.event || 'iClosed')}</span></div>
     <div class="row wrap mt" style="gap:8px">
       ${c.tel ? `<a class="btn sm p" href="tel:+${esc(c.tel)}">📞 +${esc(c.tel)}</a><a class="btn sm" href="https://wa.me/${esc(c.tel)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : '<span class="small muted">Pas de numéro dans iClosed</span>'}
       ${c.mail ? `<a class="btn sm ghost" href="mailto:${esc(c.mail)}">✉️ ${esc(c.mail)}</a>` : ''}
