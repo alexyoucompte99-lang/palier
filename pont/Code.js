@@ -16,6 +16,13 @@
 //   ntfy_test    {}
 //   strava_setup { client_id, client_secret }
 //   strava_sync  {}
+//   selfty_setup { iclosed_key, selfty_url, selfty_key }  clé API iClosed + pont console Selfty (ScriptProperties), installe le trigger
+//   selfty_sync  {}                          synchro immédiate : 1 tâche « appeler le lead » par call d'Anaïs (aujourd'hui/demain)
+//
+// Calls d'Anaïs (Selfty) : selftySync_() toutes les 30 min lit iClosed, crée/actualise une tâche par call à venir
+// d'aujourd'hui ou de demain (id task-selfty-<callId>, src 'selfty', infos du lead dans `call`), la supprime si le call
+// est annulé, et pousse `prep` (infos saisies par Alex dans la tâche) vers le pont Selfty (what=call_prep) dès qu'il change
+// (à l'upsert depuis l'appli, + rattrapage au trigger). Une tâche supprimée à la main n'est pas recréée.
 
 const KEY = 'palier-7f3c9a2e5b1d4c8e';
 const P = PropertiesService.getScriptProperties();
@@ -30,6 +37,7 @@ function doGet(e) {
   if (q.what === 'all') return out(all_(Number(q.since || 0)));
   if (q.what === 'strava_auth') return out({ ok: true, url: stravaAuthUrl_() });
   if (q.what === 'strava_sync') return out(stravaSync_());
+  if (q.what === 'selfty_sync') return out(selftySync_());
   if (q.what === 'ntfy_test') return out({ ok: ntfy_('Palier : notification de test 👌', 'Test') });
   return out({ ok: true, pong: true, v: 1 });
 }
@@ -48,6 +56,8 @@ function doPost(e) {
     if (p.what === 'ntfy_test') return out({ ok: ntfy_('Palier : notification de test 👌', 'Test') });
     if (p.what === 'strava_setup') { P.setProperty('STRAVA_ID', String(p.client_id)); P.setProperty('STRAVA_SECRET', String(p.client_secret)); return out({ ok: true, url: stravaAuthUrl_() }); }
     if (p.what === 'strava_sync') return out(stravaSync_());
+    if (p.what === 'selfty_setup') return out(selftySetup_(p));
+    if (p.what === 'selfty_sync') return out(selftySync_());
     return out({ ok: false, error: 'unknown what' });
   } catch (err) {
     return out({ ok: false, error: String(err && err.message || err) });
@@ -91,6 +101,7 @@ function installTriggers_() {
   ScriptApp.newTrigger('notifEvening').timeBased().atHour(21).nearMinute(30).everyDays(1).inTimezone(TZ).create();
   ScriptApp.newTrigger('notifWeekly').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(18).nearMinute(0).inTimezone(TZ).create();
   ScriptApp.newTrigger('stravaSync_').timeBased().everyMinutes(15).create();
+  ScriptApp.newTrigger('selftySync_').timeBased().everyMinutes(30).create();
 }
 
 // ---------- stockage ----------
@@ -116,6 +127,18 @@ function all_(since) {
 }
 
 function upsert_(items) {
+  const r = upsertRows_(items);
+  // tâches « call Anaïs » : infos saisies par Alex -> console Selfty, tout de suite
+  const pending = (items || []).filter(o => o && o.t === 'task' && o.src === 'selfty' && !o.del && (o.prep || '') !== (o.prep_sent || ''));
+  if (pending.length) {
+    const upd = [];
+    pending.forEach(t => { if (pushPrep_(t)) upd.push(t); });
+    if (upd.length) { upsertRows_(upd); r.updated = upd; }
+  }
+  return r;
+}
+
+function upsertRows_(items) {
   if (!items.length) return { ok: true, n: 0 };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -229,6 +252,119 @@ function health_(p) {
     items.push({ id: 'medit-auto-' + date, t: 'medit', d: date, min: Number(p.mindful_min), src: 'health', u: Date.now() });
   }
   return upsert_(items);
+}
+
+// ---------- Calls d'Anaïs (Selfty · iClosed) ----------
+function selftySetup_(p) {
+  if (p.iclosed_key) P.setProperty('ICLOSED_KEY', String(p.iclosed_key).trim());
+  if (p.selfty_url) P.setProperty('SELFTY_URL', String(p.selfty_url).trim());
+  if (p.selfty_key) P.setProperty('SELFTY_KEY', String(p.selfty_key).trim());
+  if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'selftySync_'))
+    ScriptApp.newTrigger('selftySync_').timeBased().everyMinutes(30).create();
+  return Object.assign({ ok: true, iclosed: !!P.getProperty('ICLOSED_KEY'), selfty: !!P.getProperty('SELFTY_URL') }, selftySync_());
+}
+
+function phone_(v) {
+  let s = String(v == null ? '' : v).trim();
+  if (!s || s[0] === '#') return '';
+  const plus = s[0] === '+';
+  const d = s.replace(/\D/g, '');
+  if (!d) return '';
+  if (plus) return d;
+  if (d.indexOf('00') === 0) return d.slice(2);
+  if (d[0] === '0' && d.length === 10) return '33' + d.slice(1);
+  if (d.length === 9 && '67'.indexOf(d[0]) >= 0) return '33' + d;
+  return d;
+}
+
+function selftyCalls_() {
+  const key = P.getProperty('ICLOSED_KEY');
+  if (!key) return null;
+  const raw = [];
+  for (let page = 0; page < 20; page++) {
+    const res = UrlFetchApp.fetch('https://public.api.iclosed.io/v1/eventCalls?limit=100&page=' + page, { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('iClosed ' + res.getResponseCode());
+    const batch = ((JSON.parse(res.getContentText()).data || {}).eventCalls) || [];
+    batch.forEach(c => raw.push(c));
+    if (batch.length < 100) break;
+  }
+  const seen = {}, calls = [];
+  raw.forEach(c => {
+    if (!c || !c.id || seen[c.id]) return;
+    seen[c.id] = 1;
+    const quest = [];
+    (c.secondaryAnswers || []).forEach(q => {
+      const ans = (q.answer || []).map(a => String(a.answer || '')).filter(Boolean).join(' / ');
+      if (ans) quest.push([String(q.statement || '?').trim(), ans]);
+    });
+    const task = (c.task || [{}])[0] || {};
+    calls.push({
+      id: c.id, n: String(c.inviteeName || '?').trim(), mail: String(c.inviteeEmail || '').trim().toLowerCase(), tel: phone_(c.phoneNumber),
+      utc: c.dateTimeUTC || '', link: c.locationLinkInvitee || '', event: String((c.event || {}).name || '').trim(), closer: String((c.user || {}).firstName || '').trim(),
+      cancel: !!c.cancelReason || c.eventType === 'CANCELLED', cancelWhy: String(c.cancelReason || '').trim(),
+      notes: String(task.notes || c.notes || '').trim(), quest
+    });
+  });
+  return calls;
+}
+
+function addDays_(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd'); }
+function quandCall_(utc, today) {
+  const d = new Date(utc), day = Utilities.formatDate(d, TZ, 'yyyy-MM-dd'), h = Utilities.formatDate(d, TZ, 'H\'h\'mm');
+  if (day === today) return 'aujourd\'hui ' + h;
+  if (day === addDays_(today, 1)) return 'demain ' + h;
+  return Utilities.formatDate(d, TZ, 'EEE d MMM') + ' ' + h;
+}
+
+function selftySync_() {
+  const calls = selftyCalls_();
+  if (!calls) return { ok: false, error: 'iClosed non configuré (selfty_setup)' };
+  const today = today_(), tmr = addDays_(today, 1), now = Date.now();
+  const { rows, index } = readAll_();
+  const raw = id => { const ex = index[id]; if (!ex) return null; try { return JSON.parse(rows[ex.row - 2][5]); } catch (e) { return null; } };
+  const items = [], created = [], removed = [];
+  calls.forEach(c => {
+    const id = 'task-selfty-' + c.id;
+    const cur = raw(id);
+    if (!c.utc) return;
+    const day = Utilities.formatDate(new Date(c.utc), TZ, 'yyyy-MM-dd');
+    if (c.cancel) {
+      if (cur && !cur.del && !cur.done) { cur.del = true; cur.u = now; items.push(cur); removed.push(c.n); }
+      return;
+    }
+    if (new Date(c.utc).getTime() < now) return;           // call déjà passé : on ne touche plus à la tâche
+    if (day > tmr && !cur) return;                          // pas encore la veille : rien à créer
+    if (cur && (cur.del || cur.done)) return;               // supprimée à la main ou déjà faite
+    const info = { id: c.id, n: c.n, mail: c.mail, tel: c.tel, utc: c.utc, link: c.link, event: c.event, closer: c.closer, notes: c.notes, quest: c.quest };
+    const title = '📞 Appeler ' + c.n + ' · call Anaïs ' + quandCall_(c.utc, today);
+    if (!cur) {
+      items.push({ id, t: 'task', d: today, title, client: 'client-anais', imp: 3, urg: 3, est: 15, today, done: false, src: 'selfty', call_id: String(c.id), call: info, prep: '', prep_sent: '', u: now });
+      created.push(c.n + ' (' + quandCall_(c.utc, today) + ')');
+    } else {
+      const want = day <= tmr ? (cur.today && cur.today <= today ? cur.today : today) : addDays_(day, -1);
+      if (cur.title !== title || cur.today !== want || JSON.stringify(cur.call) !== JSON.stringify(info)) { cur.title = title; cur.today = want; cur.call = info; cur.u = now; items.push(cur); }
+    }
+  });
+  // infos saisies par Alex pas encore parties vers la console (rattrapage)
+  const pushed = [];
+  itemsOf_('task').forEach(t => { if (t.src === 'selfty' && (t.prep || '') !== (t.prep_sent || '') && pushPrep_(t)) { pushed.push(t); items.push(t); } });
+  if (items.length) upsertRows_(items);
+  if (created.length) ntfy_('À appeler aujourd\'hui avant les calls d\'Anaïs :\n' + created.map(x => '• ' + x).join('\n') + '\n\nInfos du lead dans la tâche, note tes infos pour le call : elles partent dans la console Selfty.', 'Calls Anaïs 📞', 'telephone_receiver', 4);
+  return { ok: true, calls: calls.length, created: created.length, updated: items.length - created.length - pushed.length, removed: removed.length, pushed: pushed.length };
+}
+
+function pushPrep_(t) {
+  const url = P.getProperty('SELFTY_URL'), key = P.getProperty('SELFTY_KEY');
+  if (!url || !key || !t.call_id) return false;
+  const c = t.call || {};
+  try {
+    const res = UrlFetchApp.fetch(url, { method: 'post', contentType: 'text/plain', followRedirects: true, muteHttpExceptions: true,
+      payload: JSON.stringify({ key, what: 'call_prep', id: t.call_id, nom: c.n, email: c.mail, tel: c.tel, utc: c.utc, prep: t.prep || '' }) });
+    const j = JSON.parse(res.getContentText());
+    if (!j.ok) return false;
+    t.prep_sent = t.prep || ''; t.prep_sent_at = new Date().toISOString(); t.u = Date.now();
+    return true;
+  } catch (e) { return false; }
 }
 
 // ---------- ntfy ----------

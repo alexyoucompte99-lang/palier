@@ -62,6 +62,7 @@ main{max-width:760px;margin:0 auto;padding:6px 14px 20px}
 .chip.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
 .chip-amber{background:var(--amber-soft);color:#8a5a12;border-color:transparent}
 .chip-red{background:var(--red-soft);color:var(--red);border-color:transparent}
+.chip-green{background:var(--acc-soft);color:var(--acc);border-color:transparent}
 .chip-acc{background:var(--acc-soft);color:var(--acc);border-color:transparent}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}

@@ -52,7 +52,12 @@ async function flush() {
   const items = ids.map(id => DB.items[id]).filter(Boolean);
   try {
     const r = await post({ what: 'upsert', items });
-    if (r && r.ok) { DB.outbox = DB.outbox.filter(id => !ids.includes(id)); saveDB(); setSync('ok'); }
+    if (r && r.ok) {
+      DB.outbox = DB.outbox.filter(id => !ids.includes(id));
+      // éléments modifiés côté pont pendant l'upsert (ex. infos call Anaïs envoyées à la console Selfty)
+      let changed = 0; (r.updated || []).forEach(o => { if (o && o.id && !DB.outbox.includes(o.id)) { DB.items[o.id] = o; changed++; } });
+      saveDB(); setSync('ok'); if (changed) render();
+    }
     else setSync('err');
   } catch (e) { setSync('err'); }
   syncing = false;
@@ -176,9 +181,9 @@ function clientChips(name, val, extra) { const cs = clients().filter(c => c.kind
 function clientDot(id) { const c = client(id); return `<span class="dot" style="background:${c.color}"></span>${esc(c.name)}`; }
 
 // ---------- dictée vocale ----------
-function micButton(inputSel, root) {
+function micButton(inputSel, root, btnSel) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const btn = root.querySelector('[data-mic]');
+  const btn = root.querySelector(btnSel || '[data-mic]');
   if (!btn) return;
   if (!SR) { btn.title = 'Dictée : utilise le micro du clavier'; btn.addEventListener('click', () => { root.querySelector(inputSel).focus(); toast('Utilise le micro du clavier 🎙️'); }); return; }
   let rec = null;

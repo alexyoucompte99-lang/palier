@@ -20,6 +20,12 @@ Appli perso de pilotage d'Alex : clients & to-do priorisée, sport (muscu, run 5
    Activer l'export vers Apple Santé dans Sleep Cycle et dans Petit Bambou. Backup : le check-in du matin permet toujours de saisir à la main + screen Sleep Cycle.
 5. **Temps d'écran** : pas d'API Apple. Champ « écran hier » dans le check-in du matin.
 
+## Calls d'Anaïs (Selfty) → tâches « appeler le lead »
+
+Le pont lit iClosed toutes les 30 min (clé API + URL/clé du pont console Selfty posées via `selfty_setup`, stockées en ScriptProperties). Pour chaque call à venir d'aujourd'hui ou de demain, il crée dans la to-do du jour une tâche `task-selfty-<callId>` (client Anaïs, ★★★ 🔥🔥🔥) avec toutes les infos du lead (numéro cliquable, WhatsApp, e-mail, lien visio, réponses au questionnaire iClosed). Le titre suit le call (aujourd'hui/demain + heure), la tâche est supprimée si le call est annulé, et une tâche supprimée à la main n'est pas recréée. Notif ntfy à la création.
+
+Dans la tâche, le champ « Mes infos pour le call d'Anaïs » part au pont Selfty (`what=call_prep`) dès l'enregistrement : colonne « Prépa Alex » de l'onglet « Suivi Calls », affichée dans la console (Agenda calls + Calls effectués). Rattrapage automatique au trigger si l'envoi a échoué (`prep` ≠ `prep_sent`). Synchro manuelle : `?what=selfty_sync`.
+
 ## Structure
 
 `index.html` + `style.css` + `core.js` (stockage, synchro, référentiel clients, stats) + `charts.js` (SVG) + `today.js` / `clients.js` / `sport.js` / `suivi.js` / `bilan.js` (onglets) + `app.js` (navigation, réglages). `sw.js` + `manifest.webmanifest` = PWA. `make_icons.py` = logo.

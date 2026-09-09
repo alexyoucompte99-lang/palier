@@ -85,7 +85,7 @@ function taskRow(t) {
     <button class="cb" data-check>${t.done ? '✓' : ''}</button>
     <div class="grow" data-edit>
       <div class="title">${esc(t.title)}</div>
-      <div class="meta"><span>${clientDot(t.client)}</span><span class="prio q${q}">${'★'.repeat(t.imp || 2)} ${'🔥'.repeat(t.urg || 2)}</span>${t.today && t.today < today() && !t.done ? `<span class="chip-red" style="padding:0 6px;border-radius:6px">${fmtDate(t.today)}</span>` : ''}${t.est ? `<span>~${t.est} min</span>` : ''}${t.done && t.mins ? `<span>${t.mins} min</span>` : ''}${t.src === 'eve' ? '<span>🌙 action du bilan</span>' : ''}${t.src === 'weekly' ? '<span>📅 plan hebdo</span>' : ''}</div>
+      <div class="meta"><span>${clientDot(t.client)}</span><span class="prio q${q}">${'★'.repeat(t.imp || 2)} ${'🔥'.repeat(t.urg || 2)}</span>${t.today && t.today < today() && !t.done ? `<span class="chip-red" style="padding:0 6px;border-radius:6px">${fmtDate(t.today)}</span>` : ''}${t.est ? `<span>~${t.est} min</span>` : ''}${t.done && t.mins ? `<span>${t.mins} min</span>` : ''}${t.src === 'eve' ? '<span>🌙 action du bilan</span>' : ''}${t.src === 'weekly' ? '<span>📅 plan hebdo</span>' : ''}${t.src === 'selfty' ? (t.prep ? ((t.prep_sent || '') === t.prep ? '<span class="chip-green" style="padding:0 6px;border-radius:6px">✓ infos envoyées à la console</span>' : '<span class="chip-red" style="padding:0 6px;border-radius:6px">infos en attente d\'envoi</span>') : '<span class="chip-red" style="padding:0 6px;border-radius:6px">✍️ infos du call à remplir</span>') : ''}</div>
     </div>
   </div>`;
 }
@@ -111,7 +111,8 @@ function toggleTask(t) {
 function taskSheet(t, preset) {
   const isNew = !t; t = t || Object.assign({ id: uid('task'), t: 'task', d: today(), title: '', client: 'client-perso', imp: 2, urg: 2, today: today(), done: false, src: 'manual' }, preset || {});
   const when = t.today === today() ? 'today' : t.today === tomorrow() ? 'tmr' : t.today ? 'date' : 'backlog';
-  const sh = openSheet(isNew ? 'Nouvelle tâche' : 'Tâche', `
+  const sh = openSheet(isNew ? 'Nouvelle tâche' : (t.src === 'selfty' ? 'Call Anaïs · appeler le lead' : 'Tâche'), `
+    ${t.call ? leadCard(t) : ''}
     <div class="row"><input class="in grow" data-title placeholder="Quoi ?" value="${esc(t.title)}" autofocus><button class="mic" data-mic title="Dicter">🎙️</button></div>
     <label class="f">Pour qui</label>${clientChips('client', t.client, true)}
     <div class="grid2">
@@ -124,7 +125,7 @@ function taskSheet(t, preset) {
     <div class="grid2"><div><label class="f">Estimation (min, facultatif)</label><input class="in" type="number" inputmode="numeric" data-est value="${t.est || ''}"></div><div><label class="f">Échéance (facultatif)</label><input class="in" type="date" data-due value="${esc(t.due || '')}"></div></div>
     <label class="f">Note</label><textarea class="in" data-note>${esc(t.note || '')}</textarea>
     <div class="sheet-actions">${isNew ? '' : '<button class="btn danger" data-del>Supprimer</button>'}<button class="btn p grow" data-save>Enregistrer</button></div>`);
-  wireSegs(sh); micButton('[data-title]', sh);
+  wireSegs(sh); micButton('[data-title]', sh); if (t.call) micButton('[data-prep]', sh, '[data-mic-prep]');
   const quad = () => { const q = quadrant({ imp: segVal(sh, 'imp'), urg: segVal(sh, 'urg') }); sh.querySelector('[data-quad]').innerHTML = `<span class="prio q${q}">${QLABEL[q]}</span> ${q === 3 ? '→ pense à Cynthia ou Maximilien' : q === 4 ? '→ vraiment nécessaire ?' : q === 2 ? '→ bloque un créneau' : ''}`; };
   quad(); sh.addEventListener('change', e => { quad(); const w = segVal(sh, 'when'); sh.querySelector('[data-date]').style.display = w === 'date' ? 'block' : 'none'; });
   sh.querySelector('[data-save]').addEventListener('click', () => {
@@ -132,10 +133,30 @@ function taskSheet(t, preset) {
     t.title = title; t.client = segVal(sh, 'client') || 'client-perso'; t.imp = segVal(sh, 'imp'); t.urg = segVal(sh, 'urg');
     const w = segVal(sh, 'when'); t.today = w === 'today' ? today() : w === 'tmr' ? tomorrow() : w === 'date' ? (val(sh, '[data-date]') || null) : null;
     t.est = nval(sh, '[data-est]'); t.due = val(sh, '[data-due]') || null; t.note = val(sh, '[data-note]');
-    put(t); sh.close(); render(); toast(isNew ? 'Tâche ajoutée' : 'Tâche mise à jour');
+    const prepEl = sh.querySelector('[data-prep]'); if (prepEl) t.prep = prepEl.value.trim();
+    put(t); sh.close(); render(); toast(isNew ? 'Tâche ajoutée' : (prepEl && t.prep && t.prep !== t.prep_sent ? 'Infos envoyées à la console Selfty 📤' : 'Tâche mise à jour'));
   });
   const del = sh.querySelector('[data-del]'); if (del) del.addEventListener('click', () => { remove(t.id); sh.close(); render(); });
   setTimeout(() => { const i = sh.querySelector('[data-title]'); if (isNew && i) i.focus(); }, 150);
+}
+
+// ---------- lead d'un call Anaïs (Selfty · iClosed) ----------
+function leadCard(t) {
+  const c = t.call || {}, d = c.utc ? new Date(c.utc) : null;
+  const quand = d ? d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', 'h') : '?';
+  const sent = t.prep && (t.prep_sent || '') === t.prep;
+  return `<div class="card" style="margin-top:0;background:var(--amber-soft)">
+    <div class="row between"><div><div class="title" style="font-weight:700;font-size:17px">${esc(c.n || '?')}</div><div class="small muted">Call avec Anaïs · ${esc(quand)}${c.closer ? ' · closer ' + esc(c.closer) : ''}</div></div><span class="small muted">${esc(c.event || 'iClosed')}</span></div>
+    <div class="row wrap mt" style="gap:8px">
+      ${c.tel ? `<a class="btn sm p" href="tel:+${esc(c.tel)}">📞 +${esc(c.tel)}</a><a class="btn sm" href="https://wa.me/${esc(c.tel)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : '<span class="small muted">Pas de numéro dans iClosed</span>'}
+      ${c.mail ? `<a class="btn sm ghost" href="mailto:${esc(c.mail)}">✉️ ${esc(c.mail)}</a>` : ''}
+      ${c.link ? `<a class="btn sm ghost" href="${esc(c.link)}" target="_blank" rel="noopener">🎥 Lien visio</a>` : ''}
+    </div>
+    ${(c.quest || []).length || c.notes ? `<details class="mt"><summary class="small" style="cursor:pointer;font-weight:600">Ses réponses au questionnaire iClosed (${(c.quest || []).length})</summary>${(c.quest || []).map(([q, a]) => `<div class="small mt"><b>${esc(q)}</b><br>${esc(a)}</div>`).join('')}${c.notes ? `<div class="small mt"><b>Notes iClosed</b><br>${esc(c.notes)}</div>` : ''}</details>` : '<div class="small muted mt">Pas de réponses au questionnaire.</div>'}
+    <label class="f">Mes infos pour le call d'Anaïs (envoyées dans la console Selfty à l'enregistrement)</label>
+    <div class="row"><textarea class="in grow" data-prep rows="4" placeholder="Situation, motivation, objections, budget, ce qu'il faut savoir avant le call…">${esc(t.prep || '')}</textarea><button class="mic" data-mic-prep title="Dicter">🎙️</button></div>
+    <div class="small ${sent ? '' : 'muted'}" style="margin-top:4px">${t.prep ? (sent ? '✓ Envoyées à la console Selfty' + (t.prep_sent_at ? ' le ' + new Date(t.prep_sent_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : '⏳ En attente d\'envoi (synchro)') : 'Rien d\'envoyé pour l\'instant.'}</div>
+  </div>`;
 }
 
 // ---------- chrono ----------
